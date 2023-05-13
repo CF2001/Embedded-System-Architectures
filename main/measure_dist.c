@@ -3,6 +3,7 @@
 #include "esp_timer.h"
 #include <esp32/rom/ets_sys.h>
 
+#include "wifi_station.h"
 
 #define IN_GPIO 14
 #define OUT_GPIO 25
@@ -71,7 +72,13 @@ void ultrasonic_measure(void *pvParameters)
 void app_main()
 {
     
-    ultrasonic_measure();
+    init_NVS();
+    wifi_init_sta();
+
+    if (wifi_connect_status)
+    {
+        xTaskCreate(ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
+    }
     
     printf("App_main END !! \n");
 }
