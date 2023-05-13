@@ -19,7 +19,8 @@
 float distance;
 
 static const char *TAG_HTTP = "HTTP_CLIENT";
-char api_key[] = "JKG5ZK4N29JTE8VR";
+char POST_api_key[] = "JKG5ZK4N29JTE8VR";
+//char GET_api_key[] = "JKG5ZK4N29JTE8VR";
 
 static void configure_pins(void)
 {
@@ -33,10 +34,8 @@ static void configure_pins(void)
     gpio_set_level(TRIGGER_PIN, 0);
 }
 
-void ultrasonic_measure(void *pvParameters)
+static void ultrasonic_measure(void *pvParameters)
 {
-    configure_pins();
-
     while(true)
     {
         // Send a trigger pulse (10us) to the HC-SR04P
@@ -65,37 +64,37 @@ void ultrasonic_measure(void *pvParameters)
         
         printf("Distance: %0.04f cm\n", distance);
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(500)); // 0,5 s
     }
 
     vTaskDelete(NULL);
 }
 
-void send_dist_to_dashboard(void *pvParameters)
+// https://api.thingspeak.com/update?api_key=JKG5ZK4N29JTE8VR&field1=0
+// POST FORMAT - https://api.thingspeak.com/update.<format>
+static void send_data_to_dashboard(void *pvParameters)
 {
-    printf("wifi_status: %d \n", wifi_connect_status);
-
-    char url [] = "https://api.thingspeak.com";
-    char data [] = "/update?api_key=%s&field1=%.04f";
+    const char *url = "https://api.thingspeak.com";
+    char data [] = "&field1=%0.04f";
     char post_data[200];
     esp_err_t err;
 
     esp_http_client_config_t config = {
 		.url = url,
-		.method = HTTP_METHOD_GET,
+		.method = HTTP_METHOD_POST,
 	};
 	esp_http_client_handle_t client = esp_http_client_init(&config);
+    // formato do pacote de envio do post 
+    esp_http_client_set_url(client, "/update?api_key=JKG5ZK4N29JTE8VR");
     esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
 
+    int i = 0;
     while(1)
     {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);    // 1 s
 		strcpy(post_data, "");
-		snprintf(post_data, sizeof(post_data), data, api_key, distance);
+        snprintf(post_data, sizeof(post_data), data, distance);
 		ESP_LOGI(TAG_HTTP, "post = %s", post_data);
-		//esp_http_client_set_post_field(client, post_data, strlen(post_data)); // com este n funciona 
-
-        esp_http_client_set_url(client, post_data);
+		esp_http_client_set_post_field(client, post_data, strlen(post_data)); 
 
 		err = esp_http_client_perform(client);
 
@@ -108,32 +107,74 @@ void send_dist_to_dashboard(void *pvParameters)
 			}
 			else
 			{
-				ESP_LOGI(TAG_HTTP, "Message sent Failed");				
-				goto exit;
-			}
+				ESP_LOGI(TAG_HTTP,"HTTP POST request failed: %s", esp_err_to_name(err));				
+                //goto exit;
+                break;
+            }
 		}
 		else
 		{
-			ESP_LOGI(TAG_HTTP, "Message sent Failed");
-			goto exit;
-		}
+			ESP_LOGI(TAG_HTTP, "HTTP POST request failed: %s", esp_err_to_name(err));
+            //goto exit;
+            break;
+        }
+
+        i++;
+        if (i == 50)
+            break;
+        // 500 /10
+        //vTaskDelay(500 / portTICK_PERIOD_MS);  // vTasDelay(tick) 1tck = 10 ms -> 100tck = 500ms -> 0.5 s
     }
-    exit:
-        esp_http_client_cleanup(client);
-        vTaskDelete(NULL);
+    
+    //exit:
+    esp_http_client_cleanup(client);
+    esp_http_client_close(client);
+    vTaskDelete(NULL);
 }
 
+// URL https://api.thingspeak.com/channels/<channel_id>/feeds.<format>
+static void clear_data_from_dashboard()
+{
+    // int channel_id = 2136416
+    // char *format = "json";
+    const char *url = "https://api.thingspeak.com/channels/2136416/feeds.json";
+    esp_err_t err;
+
+    esp_http_client_config_t config = {
+		.url = url,
+		.method = HTTP_METHOD_DELETE,
+	};
+	esp_http_client_handle_t client = esp_http_client_init(&config);
+    
+    //esp_http_client_set_url(client, " api_key=LMQTSIQASRSQ9JST");
+    esp_http_client_set_header(client, "api-key", "LMQTSIQASRSQ9JST");
+    esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
+
+    err = esp_http_client_perform(client);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG_HTTP, "HTTP DELETE Status = %d, content_length = %"PRIu64,
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG_HTTP, "HTTP DELETE request failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+    esp_http_client_close(client);
+}
 
 void app_main()
 {
+    configure_pins();
     
     init_NVS();
     wifi_init_sta();
 
     if (wifi_connect_status)
     {
-        xTaskCreate(ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
-        xTaskCreate(send_dist_to_dashboard, "send_dist_to_dashboard", 8192, NULL, 6, NULL);
+        clear_data_from_dashboard();
+        // xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
+        // xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL);
     }
     
     printf("App_main END !! \n");

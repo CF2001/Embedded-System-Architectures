@@ -5,8 +5,6 @@ static int s_retry_num = 0;
 
 void init_NVS(void)
 {
-    //printf("____ init_NVS ____\n");
-
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
       ESP_ERROR_CHECK(nvs_flash_erase());
@@ -17,8 +15,6 @@ void init_NVS(void)
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    //printf("____ wifi_event_handler ____ \n");
-
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) 
     {
         printf("WiFi connecting ... \n");

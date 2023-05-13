@@ -1,0 +1,100 @@
+[1/10] Performing build step for 'bootloader'
+[1/1] cd /home/claudia/esp/Embedded-System-Architectures/build/bootloader/esp-idf/esptool_py && /home/claudia/.espressif/python_env/idf5.1_py3.10_env/bin/python /home/claudia/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/claudia/esp/Embedded-System-Architectures/build/bootloader/bootloader.bin
+Bootloader binary size 0x6730 bytes. 0x8d0 bytes (8%) free.
+[2/8] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/measure_dist.c.obj
+In file included from /home/claudia/esp/Embedded-System-Architectures/main/measure_dist.c:7:
+/home/claudia/esp/Embedded-System-Architectures/main/wifi_station.h:42:13: warning: 'wifi_event_handler' declared 'static' but never defined [-Wunused-function]
+   42 | static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+      |             ^~~~~~~~~~~~~~~~~~
+/home/claudia/esp/Embedded-System-Architectures/main/measure_dist.c:75:13: warning: 'send_data_to_dashboard' defined but not used [-Wunused-function]
+   75 | static void send_data_to_dashboard(void *pvParameters)
+      |             ^~~~~~~~~~~~~~~~~~~~~~
+/home/claudia/esp/Embedded-System-Architectures/main/measure_dist.c:37:13: warning: 'ultrasonic_measure' defined but not used [-Wunused-function]
+   37 | static void ultrasonic_measure(void *pvParameters)
+      |             ^~~~~~~~~~~~~~~~~~
+In file included from /home/claudia/esp/Embedded-System-Architectures/main/measure_dist.c:7:
+/home/claudia/esp/Embedded-System-Architectures/main/wifi_station.h:29:20: warning: 'TAG_WIFI' defined but not used [-Wunused-variable]
+   29 | static const char *TAG_WIFI = "wifi station";
+      |                    ^~~~~~~~
+/home/claudia/esp/Embedded-System-Architectures/main/wifi_station.h:20:27: warning: 's_wifi_event_group' defined but not used [-Wunused-variable]
+   20 | static EventGroupHandle_t s_wifi_event_group;
+      |                           ^~~~~~~~~~~~~~~~~~
+[3/8] Linking C static library esp-idf/main/libmain.a
+[4/8] Generating ld/sections.ld
+[5/8] Linking CXX executable measure_dist.elf
+[6/8] Generating binary image from built executable
+esptool.py v4.5.1
+Creating esp32 image...
+Merged 25 ELF sections
+Successfully created esp32 image.
+Generated /home/claudia/esp/Embedded-System-Architectures/build/measure_dist.bin
+[7/8] cd /home/claudia/esp/Embedded-System-Architectures/build/esp-idf/esptool_py && /home/claudia/.espressif/python_env/idf5.1_py3.10_env/bin/python /home/claudia/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/claudia/esp/Embedded-System-Architectures/build/partition_table/partition-table.bin /home/claudia/esp/Embedded-System-Architectures/build/measure_dist.bin
+measure_dist.bin binary size 0xd6320 bytes. Smallest app partition is 0x100000 bytes. 0x29ce0 bytes (16%) free.
+[7/8] cd /home/claudia/esp/esp-idf/components/esptool_py && /home/claudia/.espressif/tools/cmake/3.24.0/bin/cmake -D IDF_PATH=/home/claudia/esp/esp-idf -D "SERIAL_TOOL=/home/claudia/.espressif/python_env/idf5.1_py3.10_env/bin/python;;/home/claudia/esp/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/home/claudia/esp/Embedded-System-Architectures/build -P /home/claudia/esp/esp-idf/components/esptool_py/run_serial_tool.cmake
+esptool esp32 -p /dev/ttyUSB0 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 2MB 0x1000 bootloader/bootloader.bin 0x10000 measure_dist.bin 0x8000 partition_table/partition-table.bin
+esptool.py v4.5.1
+Serial port /dev/ttyUSB0
+Connecting....
+Chip is ESP32-D0WD-V3 (revision v3.0)
+Features: WiFi, BT, Dual Core, 240MHz, VRef calibration in efuse, Coding Scheme None
+Crystal is 40MHz
+MAC: e8:31:cd:c4:51:4c
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00001000 to 0x00007fff...
+Flash will be erased from 0x00010000 to 0x000e6fff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+Compressed 26416 bytes to 16502...
+Writing at 0x00001000... (50 %)
+Writing at 0x00007696... (100 %)
+Wrote 26416 bytes (16502 compressed) at 0x00001000 in 0.8 seconds (effective 271.2 kbit/s)...
+Hash of data verified.
+Compressed 877344 bytes to 558520...
+Writing at 0x00010000... (2 %)
+Writing at 0x0001c251... (5 %)
+Writing at 0x000274f0... (8 %)
+Writing at 0x0002dcc4... (11 %)
+Writing at 0x000343f7... (14 %)
+Writing at 0x0003d511... (17 %)
+Writing at 0x00042dab... (20 %)
+Writing at 0x00048a94... (22 %)
+Writing at 0x0004e2c3... (25 %)
+Writing at 0x00053e85... (28 %)
+Writing at 0x00059be4... (31 %)
+Writing at 0x0005f5a3... (34 %)
+Writing at 0x000648b4... (37 %)
+Writing at 0x00069dc0... (40 %)
+Writing at 0x0006f216... (42 %)
+Writing at 0x0007495d... (45 %)
+Writing at 0x0007a22f... (48 %)
+Writing at 0x0007ffa9... (51 %)
+Writing at 0x00085a60... (54 %)
+Writing at 0x0008af95... (57 %)
+Writing at 0x0009091b... (60 %)
+Writing at 0x0009617c... (62 %)
+Writing at 0x0009b881... (65 %)
+Writing at 0x000a1275... (68 %)
+Writing at 0x000a75eb... (71 %)
+Writing at 0x000acc4c... (74 %)
+Writing at 0x000b30e4... (77 %)
+Writing at 0x000b86ec... (80 %)
+Writing at 0x000be04d... (82 %)
+Writing at 0x000c3b07... (85 %)
+Writing at 0x000cd414... (88 %)
+Writing at 0x000d4deb... (91 %)
+Writing at 0x000dab37... (94 %)
+Writing at 0x000e042d... (97 %)
+Writing at 0x000e5865... (100 %)
+Wrote 877344 bytes (558520 compressed) at 0x00010000 in 13.0 seconds (effective 538.0 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 103...
+Writing at 0x00008000... (100 %)
+Wrote 3072 bytes (103 compressed) at 0x00008000 in 0.1 seconds (effective 459.6 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...
