@@ -2,6 +2,7 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include <esp32/rom/ets_sys.h>
+#include "esp_http_client.h"
 
 #include "wifi_station.h"
 
@@ -17,6 +18,8 @@
 
 float distance;
 
+static const char *TAG_HTTP = "HTTP_CLIENT";
+char api_key[] = "JKG5ZK4N29JTE8VR";
 
 static void configure_pins(void)
 {
@@ -68,6 +71,58 @@ void ultrasonic_measure(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+void send_dist_to_dashboard(void *pvParameters)
+{
+    printf("wifi_status: %d \n", wifi_connect_status);
+
+    char url [] = "https://api.thingspeak.com";
+    char data [] = "/update?api_key=%s&field1=%.04f";
+    char post_data[200];
+    esp_err_t err;
+
+    esp_http_client_config_t config = {
+		.url = url,
+		.method = HTTP_METHOD_GET,
+	};
+	esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
+
+    while(1)
+    {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);    // 1 s
+		strcpy(post_data, "");
+		snprintf(post_data, sizeof(post_data), data, api_key, distance);
+		ESP_LOGI(TAG_HTTP, "post = %s", post_data);
+		//esp_http_client_set_post_field(client, post_data, strlen(post_data)); // com este n funciona 
+
+        esp_http_client_set_url(client, post_data);
+
+		err = esp_http_client_perform(client);
+
+		if (err == ESP_OK)
+		{
+			int status_code = esp_http_client_get_status_code(client);
+			if (status_code == 200)
+			{
+				ESP_LOGI(TAG_HTTP, "Message sent Successfully");
+			}
+			else
+			{
+				ESP_LOGI(TAG_HTTP, "Message sent Failed");				
+				goto exit;
+			}
+		}
+		else
+		{
+			ESP_LOGI(TAG_HTTP, "Message sent Failed");
+			goto exit;
+		}
+    }
+    exit:
+        esp_http_client_cleanup(client);
+        vTaskDelete(NULL);
+}
+
 
 void app_main()
 {
@@ -78,6 +133,7 @@ void app_main()
     if (wifi_connect_status)
     {
         xTaskCreate(ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
+        xTaskCreate(send_dist_to_dashboard, "send_dist_to_dashboard", 8192, NULL, 6, NULL);
     }
     
     printf("App_main END !! \n");
