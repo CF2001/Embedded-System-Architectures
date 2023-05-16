@@ -1,4 +1,4 @@
-#ifndef WIFI_STATIOn_H_
+#ifndef WIFI_STATION_H_
 #define WIFI_STATION_H_
 
 #include "freertos/FreeRTOS.h"
@@ -39,8 +39,17 @@ extern int wifi_connect_status;
 */
 void init_NVS(void);
 
+/**
+ *  @param
+ *  @param 
+ *  @param
+ *  @param
+*/
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
+/**
+ * 
+*/
 void wifi_init_sta(void);
 
 #endif
