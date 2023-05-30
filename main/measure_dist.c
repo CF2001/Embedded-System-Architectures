@@ -19,6 +19,10 @@ char POST_api_key[] = "JKG5ZK4N29JTE8VR";
 
 static const char *TAG =  "MEASURES";
 
+#define LED_GREEN  17
+#define LED_YELLOW 27
+#define LED_RED 26
+
 #define IN_GPIO 14
 #define OUT_GPIO 25
 #define TRIGGER_PIN OUT_GPIO    // envia o sinal de 10 us para o trigger 
@@ -38,12 +42,24 @@ static void configure_pins(void)
 {
     // Initializing GPIO14 as input 
     gpio_reset_pin(IN_GPIO);
-    gpio_set_direction(ECHO_PIN, GPIO_MODE_INPUT);
+    gpio_set_direction(ECHO_PIN, GPIO_MODE_INPUT); 
    
-    // Initializing GPIO25 as output.
+    // Initializing GPIO25 and GPIO26 as output.
     gpio_reset_pin(OUT_GPIO);
     gpio_set_direction(TRIGGER_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(TRIGGER_PIN, 0);
+
+    gpio_reset_pin(LED_GREEN);
+    gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED_GREEN, 0);
+
+     gpio_reset_pin(LED_YELLOW);
+    gpio_set_direction(LED_YELLOW, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED_YELLOW, 0);
+
+     gpio_reset_pin(LED_RED);
+    gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED_RED, 0);
 }
 
 // URL https://api.thingspeak.com/channels/<channel_id>/feeds.<format>
@@ -136,6 +152,30 @@ static void send_data_to_dashboard(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+void process_data()
+{
+    if (distance >= 20)
+    {
+        gpio_set_level(LED_GREEN, 1);
+        gpio_set_level(LED_YELLOW, 0);
+        gpio_set_level(LED_RED, 0);
+
+    }else if (distance < 20 && distance > 10)
+    {
+        gpio_set_level(LED_GREEN, 0);
+        gpio_set_level(LED_YELLOW, 1);
+        gpio_set_level(LED_RED, 0);
+
+    }else if (distance < 10) 
+    {
+
+        gpio_set_level(LED_GREEN, 0);
+        gpio_set_level(LED_YELLOW, 0);
+        gpio_set_level(LED_RED, 1);
+    }
+
+}
+
 static void ultrasonic_measure(void *pvParameters)
 {
     speedOfSound = (((331.5 + (0.6 * temperature)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
@@ -171,6 +211,8 @@ static void ultrasonic_measure(void *pvParameters)
         ESP_LOGI(TAG, "Time echo is High: %ld", time_echo_isHigh);
         distance = ((speedOfSound * time_echo_isHigh) / 2); 
 
+        process_data();
+
         //distance = (time_us / ROUNDTRIP_M) * 100;
         
         printf("Distance: %0.04f cm\n", distance);
@@ -184,18 +226,20 @@ static void ultrasonic_measure(void *pvParameters)
 void app_main()
 {
     configure_pins();
-    
-    //xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
 
-    init_NVS();
+    xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
+    //xTaskCreate(&process_data, "process_data", 2048, NULL, 5, NULL);
 
-    wifi_init_sta();
+    // init_NVS();
+    // wifi_init_sta();
 
-    printf("AQUII 3 ! \n");
-    if (wifi_connect_status)
-    {
-        //clear_data_from_dashboard();
-        xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
-        xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
-    }
+    // if (wifi_connect_status)
+    // {
+    //     //clear_data_from_dashboard();
+    //     xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
+    // }
+
+    gpio_set_level(LED_GREEN, 0);
+    gpio_set_level(LED_YELLOW, 0);
+    gpio_set_level(LED_RED, 0);
 }
