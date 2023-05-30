@@ -166,7 +166,7 @@ void process_data()
         gpio_set_level(LED_YELLOW, 1);
         gpio_set_level(LED_RED, 0);
 
-    }else if (distance < 10) 
+    }else if (distance <= 10) 
     {
 
         gpio_set_level(LED_GREEN, 0);
@@ -239,7 +239,7 @@ void app_main()
     //     xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
     // }
 
-    gpio_set_level(LED_GREEN, 0);
-    gpio_set_level(LED_YELLOW, 0);
-    gpio_set_level(LED_RED, 0);
+    //gpio_set_level(LED_GREEN, 0);
+    //gpio_set_level(LED_YELLOW, 0);
+    //gpio_set_level(LED_RED, 0);
 }
