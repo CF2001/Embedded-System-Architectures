@@ -2,6 +2,7 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 #include "esp_http_client.h"
+#include "esp_log.h"
 
 static const char *TAG_HTTP = "HTTP_CLIENT";
 char POST_api_key[] = "JKG5ZK4N29JTE8VR";

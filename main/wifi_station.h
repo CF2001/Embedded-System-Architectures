@@ -13,8 +13,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define WIFI_SSID      "Meo-Casa"
-#define WIFI_PASS      "234195488"
+#define WIFI_SSID      "OpenLab"
+#define WIFI_PASS      "open.LAB"
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -26,7 +26,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 #define EXAMPLE_ESP_MAXIMUM_RETRY  5
 
-static const char *TAG_WIFI = "wifi station";
+static const char *TAG_WIFI_STA = "wifi station";
 
 extern int wifi_connect_status;
 

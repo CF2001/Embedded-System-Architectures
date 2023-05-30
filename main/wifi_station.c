@@ -28,11 +28,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(TAG_WIFI, "retry to connect to the AP");
+            ESP_LOGI(TAG_WIFI_STA, "retry to connect to the AP");
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
-        ESP_LOGI(TAG_WIFI,"connect to the AP fail");
+        ESP_LOGI(TAG_WIFI_STA,"connect to the AP fail");
 
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) 
     {
@@ -88,7 +88,7 @@ void wifi_init_sta(void)
     // 3- Wi-Fi Start Phase
     ESP_ERROR_CHECK(esp_wifi_start());  
 
-    ESP_LOGI(TAG_WIFI, "wifi_init_sta finished.");
+    ESP_LOGI(TAG_WIFI_STA, "wifi_init_sta finished.");
 
     /** Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
      * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
@@ -102,12 +102,12 @@ void wifi_init_sta(void)
     *   hence we can test which event actually happened. 
     */
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG_WIFI, "connected to ap SSID:%s password:%s",
+        ESP_LOGI(TAG_WIFI_STA, "connected to ap SSID:%s password:%s",
                  WIFI_SSID, WIFI_PASS);
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG_WIFI, "Failed to connect to SSID:%s, password:%s",
+        ESP_LOGI(TAG_WIFI_STA, "Failed to connect to SSID:%s, password:%s",
                  WIFI_SSID, WIFI_PASS);
     } else {
-        ESP_LOGE(TAG_WIFI, "UNEXPECTED EVENT");
+        ESP_LOGE(TAG_WIFI_STA, "UNEXPECTED EVENT");
     }
 }
