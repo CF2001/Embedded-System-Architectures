@@ -13,8 +13,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define WIFI_SSID      "OpenLab"
-#define WIFI_PASS      "open.LAB"
+#define WIFI_SSID      "Redmi Note 11 Pro+ 5G"
+#define WIFI_PASS      "eduroamdemo"
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
