@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,7 +18,7 @@
 static const char *TAG_HTTP = "HTTP_CLIENT";
 char POST_api_key[] = "JKG5ZK4N29JTE8VR";
 
-static const char *TAG =  "MEASURES";
+static const char *TAG =  "MEASURE_DIST";
 
 #define LED_GREEN  17
 #define LED_YELLOW 27
@@ -31,11 +32,15 @@ static const char *TAG =  "MEASURES";
 #define TRIGGER_LOW_DELAY 2     // 2us
 #define TRIGGER_HIGH_DELAY 10   // 10us
 
-#define ROUNDTRIP_M 5800.0f
+#define MAX_DIST 450 // cm
 
+bool validDistance = true;
 float distance = 0;
 float speedOfSound = 0;
 float temperature = 20;
+float timeout = 0;
+
+#define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
 
 
 static void configure_pins(void)
@@ -53,11 +58,11 @@ static void configure_pins(void)
     gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_GREEN, 0);
 
-     gpio_reset_pin(LED_YELLOW);
+    gpio_reset_pin(LED_YELLOW);
     gpio_set_direction(LED_YELLOW, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_YELLOW, 0);
 
-     gpio_reset_pin(LED_RED);
+    gpio_reset_pin(LED_RED);
     gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_RED, 0);
 }
@@ -176,13 +181,20 @@ void process_data()
 
 }
 
+/**
+ *  Distance measurement every 0.5 s
+*/
 static void ultrasonic_measure(void *pvParameters)
 {
     speedOfSound = (((331.5 + (0.6 * temperature)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
-    //ESP_LOGI(TAG, "Speed of Sound: %f", speedOfSound);
+    ESP_LOGI(TAG, "Speed of Sound: %f", speedOfSound);
+    timeout = (MAX_DIST*2 / speedOfSound) + 1;
+    ESP_LOGI(TAG, "Timeout: %f", timeout);
 
     while(true)
     {
+        validDistance = true;
+
         // Clears the trigger Pin
         gpio_set_level(TRIGGER_PIN, 0); 
         ets_delay_us(TRIGGER_LOW_DELAY);    // delay 2us    
@@ -192,30 +204,38 @@ static void ultrasonic_measure(void *pvParameters)
         ets_delay_us(TRIGGER_HIGH_DELAY);   // delay 10us
         gpio_set_level(TRIGGER_PIN, 0);
 
-        // Wait for the echo signal
-        // int64_t start = esp_timer_get_time();
-        while (!gpio_get_level(ECHO_PIN));   // enquato estiver high 
+        // Wait for the echo signal to be high
+        while (!gpio_get_level(ECHO_PIN));    // while ECHO is low
 
         // got echo, measuring
         int64_t echo_start = esp_timer_get_time();  // Get time in microseconds since boot.
         int64_t time = echo_start;
         while (gpio_get_level(ECHO_PIN))    // while is high
         {
-            time = esp_timer_get_time();    
+            time = esp_timer_get_time(); 
+            if (timeout_expired(echo_start, timeout))
+            {
+                validDistance = false;
+                break;
+            }   
         }
 
         uint32_t time_echo_isHigh;
         time_echo_isHigh = time - echo_start;   // us (microsec)
 
-        ESP_LOGI(TAG, "Speed of Sound: %f", speedOfSound);
         ESP_LOGI(TAG, "Time echo is High: %ld", time_echo_isHigh);
         distance = ((speedOfSound * time_echo_isHigh) / 2); 
 
-        process_data();
-
-        //distance = (time_us / ROUNDTRIP_M) * 100;
-        
-        printf("Distance: %0.04f cm\n", distance);
+        if (validDistance)
+        {
+            ESP_LOGI(TAG, "Distance: %0.04f cm", distance);
+            process_data();
+        }else{
+            ESP_LOGI(TAG, "Invalid Distance !! ");
+            gpio_set_level(LED_GREEN, 1);
+            gpio_set_level(LED_YELLOW, 1);
+            gpio_set_level(LED_RED, 1);
+        }
 
         vTaskDelay(pdMS_TO_TICKS(500)); // 0,5 s
     }
@@ -227,8 +247,7 @@ void app_main()
 {
     configure_pins();
 
-    xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 5, NULL);
-    //xTaskCreate(&process_data, "process_data", 2048, NULL, 5, NULL);
+    xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 6, NULL);
 
     // init_NVS();
     // wifi_init_sta();
@@ -239,7 +258,4 @@ void app_main()
     //     xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
     // }
 
-    //gpio_set_level(LED_GREEN, 0);
-    //gpio_set_level(LED_YELLOW, 0);
-    //gpio_set_level(LED_RED, 0);
 }
