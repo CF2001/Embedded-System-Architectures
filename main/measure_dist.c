@@ -5,6 +5,11 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 
+#include "temp_sensor_TC74.h"
+#include "spi_25LC040A_eeprom.h"
+#include "driver/i2c.h"
+#include "esp_system.h"
+
 #include "esp_timer.h"      // High Resolution Timer (ESP Timer)
 //#include <esp32/rom/ets_sys.h>
 #include <rom/ets_sys.h>    // Note that this is busy-waiting – it does not allow other tasks to run, it just burns CPU cycles.
@@ -29,6 +34,16 @@ static const char *TAG =  "MEASURE_DIST";
 #define TRIGGER_PIN OUT_GPIO    // envia o sinal de 10 us para o trigger 
 #define ECHO_PIN IN_GPIO        // recebe a resposta de tempo do echo 
 
+#define I2C_MASTER_SCL_IO   15
+#define I2C_MASTER_SDA_IO   13
+#define I2C_MASTER_FREQ_HZ  50000
+#define TC74_SENSOR_ADDR    0x4D
+#define CS_PIN              5
+#define SCK_PIN             18
+#define MOSI_PIN            23
+#define MISO_PIN            19
+#define CLK_SPEED_HZ        1000000
+
 #define TRIGGER_LOW_DELAY 2     // 2us
 #define TRIGGER_HIGH_DELAY 10   // 10us
 
@@ -37,8 +52,16 @@ static const char *TAG =  "MEASURE_DIST";
 bool validDistance = true;
 float distance = 0;
 float speedOfSound = 0;
-float temperature = 20;
+//float temperature = 20;
 float timeout = 0;
+
+static const char *TAG = "TEMP_REGISTER";
+static i2c_port_t i2c_port = I2C_NUM_0;
+spi_device_handle_t spi_device;
+spi_host_device_t masterHostId = VSPI_HOST;
+TaskHandle_t xHandle = NULL;
+bool end = false;
+int8_t temperature_readings;
 
 #define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
 
@@ -181,11 +204,110 @@ void process_data()
 
 }
 
+void read_temperature_task(void *param)
+{
+    esp_err_t ret_spi = spi_25LC040_init(masterHostId, CS_PIN, SCK_PIN, MOSI_PIN, MISO_PIN, CLK_SPEED_HZ, &spi_device);
+    if (ret_spi != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize SPI device: %d", ret_spi);
+        return;
+    }
+    ESP_LOGI(TAG, "SPI device initialized successfully");
+
+    // Enable write
+    esp_err_t ret = spi_25LC040_write_enable(spi_device);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write enable");
+        return;
+    }
+
+    // Write in status register
+    ret = spi_25LC040_write_status(spi_device, 0x00); 
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write in status");
+        return;
+    }
+
+    uint8_t page_data[16];
+    int address = 0;
+    TickType_t previousWakeTime;
+
+    while (1) {
+        previousWakeTime = xTaskGetTickCount();
+        int32_t temperature_sum = 0;
+        uint8_t temperature = 0;
+        int num_readings = 3;
+
+        // Wake up and do the first read
+        esp_err_t err = tc74_wakeup_and_read_temp(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100), &temperature);
+        if (err == ESP_OK) {
+            temperature_sum += (int8_t)temperature;
+            // ESP_LOGI(TAG, "0 Temperature: %d°C", (int8_t)temperature);
+        } else {
+            ESP_LOGE(TAG, "Failed to read temperature: %d", err);
+        }
+        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
+
+        // Read the temperature 2 more times
+        for (int i = 0; i < 2; i++) {
+            temperature = 0;
+            err = tc74_read_temp_after_temp(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100), &temperature);
+
+            if (err == ESP_OK) {
+                temperature_sum += (int8_t)temperature;
+                // ESP_LOGI(TAG, "%d Temperature: %d°C", i+1, (int8_t)temperature);
+            } else {
+                ESP_LOGE(TAG, "Failed to read temperature: %d", err);
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
+        }
+
+        int8_t average_temperature = temperature_sum / num_readings;
+        temperature_readings = average_temperature;
+        ESP_LOGI(TAG, "Average Temperature: %d°C", average_temperature);
+
+        // Put the sensor into standby mode
+        esp_err_t standby_result = tc74_standby(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100));
+        if (standby_result != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to put sensor into standby mode: %d", standby_result);
+        }
+        
+        // Write to EEPROM
+        if (address % 16 && address != 0) {
+            esp_err_t ret = spi_25LC040_write_page(spi_device, address - 15, page_data, 16);
+
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to write byte");
+                return;
+            }
+        }
+        
+        
+        if (address == 511) end = true;
+        
+        page_data[address%16] = average_temperature;
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        // Disable write
+        ret = spi_25LC040_write_disable(spi_device);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write disable");
+            return;
+        }
+        
+        address++;
+        
+        vTaskDelayUntil(&previousWakeTime, pdMS_TO_TICKS(5000));
+    }
+}
+
 /**
  *  Distance measurement every 0.5 s
 */
 static void ultrasonic_measure(void *pvParameters)
 {
+    int8_t temperature = temperature_readings;
     speedOfSound = (((331.5 + (0.6 * temperature)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
     ESP_LOGI(TAG, "Speed of Sound: %f", speedOfSound);
     timeout = (MAX_DIST*2 / speedOfSound) + 1;
@@ -246,6 +368,19 @@ static void ultrasonic_measure(void *pvParameters)
 void app_main()
 {
     configure_pins();
+
+    // Initialize I2C device
+    esp_err_t ret_i2c = tc74_init(i2c_port, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
+    if (ret_i2c != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize I2C device: %d", ret_i2c);
+        return;
+    }
+    ESP_LOGI(TAG, "I2C device initialized successfully");
+    
+    
+    if (ret_i2c == ESP_OK) {
+        xTaskCreate(read_temperature_task, "Read Temp", 2048, NULL, 5, &xHandle);
+    }
 
     xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 6, NULL);
 
