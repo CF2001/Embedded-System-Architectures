@@ -38,10 +38,6 @@ static const char *TAG =  "MEASURE_DIST";
 #define I2C_MASTER_SDA_IO   13
 #define I2C_MASTER_FREQ_HZ  50000
 #define TC74_SENSOR_ADDR    0x4D
-#define CS_PIN              5
-#define SCK_PIN             18
-#define MOSI_PIN            23
-#define MISO_PIN            19
 #define CLK_SPEED_HZ        1000000
 
 #define TRIGGER_LOW_DELAY 2     // 2us
@@ -57,10 +53,8 @@ float timeout = 0;
 
 static const char *TAG = "TEMP_REGISTER";
 static i2c_port_t i2c_port = I2C_NUM_0;
-spi_device_handle_t spi_device;
-spi_host_device_t masterHostId = VSPI_HOST;
+
 TaskHandle_t xHandle = NULL;
-bool end = false;
 int8_t temperature_readings;
 
 #define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
@@ -206,29 +200,6 @@ void process_data()
 
 void read_temperature_task(void *param)
 {
-    esp_err_t ret_spi = spi_25LC040_init(masterHostId, CS_PIN, SCK_PIN, MOSI_PIN, MISO_PIN, CLK_SPEED_HZ, &spi_device);
-    if (ret_spi != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize SPI device: %d", ret_spi);
-        return;
-    }
-    ESP_LOGI(TAG, "SPI device initialized successfully");
-
-    // Enable write
-    esp_err_t ret = spi_25LC040_write_enable(spi_device);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write enable");
-        return;
-    }
-
-    // Write in status register
-    ret = spi_25LC040_write_status(spi_device, 0x00); 
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write in status");
-        return;
-    }
-
-    uint8_t page_data[16];
-    int address = 0;
     TickType_t previousWakeTime;
 
     while (1) {
@@ -272,31 +243,9 @@ void read_temperature_task(void *param)
             ESP_LOGE(TAG, "Failed to put sensor into standby mode: %d", standby_result);
         }
         
-        // Write to EEPROM
-        if (address % 16 && address != 0) {
-            esp_err_t ret = spi_25LC040_write_page(spi_device, address - 15, page_data, 16);
-
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to write byte");
-                return;
-            }
-        }
-        
-        
-        if (address == 511) end = true;
-        
-        page_data[address%16] = average_temperature;
 
         vTaskDelay(pdMS_TO_TICKS(100));
 
-        // Disable write
-        ret = spi_25LC040_write_disable(spi_device);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to write disable");
-            return;
-        }
-        
-        address++;
         
         vTaskDelayUntil(&previousWakeTime, pdMS_TO_TICKS(5000));
     }
