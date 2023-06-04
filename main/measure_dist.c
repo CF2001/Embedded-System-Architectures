@@ -4,26 +4,17 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
-
-#include "temp_sensor_TC74.h"
-#include "spi_25LC040A_eeprom.h"
-#include "driver/i2c.h"
-#include "esp_system.h"
-
-#include "esp_timer.h"      // High Resolution Timer (ESP Timer)
-//#include <esp32/rom/ets_sys.h>
-#include <rom/ets_sys.h>    // Note that this is busy-waiting – it does not allow other tasks to run, it just burns CPU cycles.
-
-#include "wifi_station.h"
-
-
+#include "esp_timer.h"              // High Resolution Timer (ESP Timer)
+#include <rom/ets_sys.h>            // Note that this is busy-waiting – it does not allow other tasks to run, it just burns CPU cycles.
 #include "esp_http_client.h"
 #include "esp_log.h"
 
-static const char *TAG_HTTP = "HTTP_CLIENT";
-char POST_api_key[] = "JKG5ZK4N29JTE8VR";
+#include "../components/wifi/wifi_station.h"
+#include "../components/TC74/temp_sensor_TC74.h"
 
-static const char *TAG =  "MEASURE_DIST";
+
+// #include "driver/i2c.h"
+#include "esp_system.h"
 
 #define LED_GREEN  17
 #define LED_YELLOW 27
@@ -34,7 +25,7 @@ static const char *TAG =  "MEASURE_DIST";
 #define TRIGGER_PIN OUT_GPIO    // envia o sinal de 10 us para o trigger 
 #define ECHO_PIN IN_GPIO        // recebe a resposta de tempo do echo 
 
-#define I2C_MASTER_SCL_IO   15
+#define I2C_MASTER_SCL_IO   12
 #define I2C_MASTER_SDA_IO   13
 #define I2C_MASTER_FREQ_HZ  50000
 #define TC74_SENSOR_ADDR    0x4D
@@ -51,10 +42,15 @@ float speedOfSound = 0;
 //float temperature = 20;
 float timeout = 0;
 
-static const char *TAG = "TEMP_REGISTER";
+
+static const char *TAG_DIST =  "MEASURE_DIST";
+
+static const char *TAG_HTTP = "HTTP_CLIENT";
+char POST_api_key[] = "JKG5ZK4N29JTE8VR";
+
+static const char *TAG_TEMP = "TEMP_VALUE";
 static i2c_port_t i2c_port = I2C_NUM_0;
 
-TaskHandle_t xHandle = NULL;
 int8_t temperature_readings;
 
 #define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
@@ -200,7 +196,6 @@ void process_data()
 
 void read_temperature_task(void *param)
 {
-    TickType_t previousWakeTime;
 
     while (1) {
         previousWakeTime = xTaskGetTickCount();
@@ -212,9 +207,9 @@ void read_temperature_task(void *param)
         esp_err_t err = tc74_wakeup_and_read_temp(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100), &temperature);
         if (err == ESP_OK) {
             temperature_sum += (int8_t)temperature;
-            // ESP_LOGI(TAG, "0 Temperature: %d°C", (int8_t)temperature);
+            // ESP_LOGI(TAG_TEMP, "0 Temperature: %d°C", (int8_t)temperature);
         } else {
-            ESP_LOGE(TAG, "Failed to read temperature: %d", err);
+            ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
 
@@ -225,29 +220,15 @@ void read_temperature_task(void *param)
 
             if (err == ESP_OK) {
                 temperature_sum += (int8_t)temperature;
-                // ESP_LOGI(TAG, "%d Temperature: %d°C", i+1, (int8_t)temperature);
+                // ESP_LOGI(TAG_TEMP, "%d Temperature: %d°C", i+1, (int8_t)temperature);
             } else {
-                ESP_LOGE(TAG, "Failed to read temperature: %d", err);
+                ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
             }
 
             vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
         }
 
-        int8_t average_temperature = temperature_sum / num_readings;
-        temperature_readings = average_temperature;
-        ESP_LOGI(TAG, "Average Temperature: %d°C", average_temperature);
-
-        // Put the sensor into standby mode
-        esp_err_t standby_result = tc74_standby(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100));
-        if (standby_result != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to put sensor into standby mode: %d", standby_result);
-        }
-        
-
         vTaskDelay(pdMS_TO_TICKS(100));
-
-        
-        vTaskDelayUntil(&previousWakeTime, pdMS_TO_TICKS(5000));
     }
 }
 
@@ -258,9 +239,9 @@ static void ultrasonic_measure(void *pvParameters)
 {
     int8_t temperature = temperature_readings;
     speedOfSound = (((331.5 + (0.6 * temperature)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
-    ESP_LOGI(TAG, "Speed of Sound: %f", speedOfSound);
+    ESP_LOGI(TAG_DIST, "Speed of Sound: %f", speedOfSound);
     timeout = (MAX_DIST*2 / speedOfSound) + 1;
-    ESP_LOGI(TAG, "Timeout: %f", timeout);
+    ESP_LOGI(TAG_DIST, "Timeout: %f", timeout);
 
     while(true)
     {
@@ -294,15 +275,15 @@ static void ultrasonic_measure(void *pvParameters)
         uint32_t time_echo_isHigh;
         time_echo_isHigh = time - echo_start;   // us (microsec)
 
-        ESP_LOGI(TAG, "Time echo is High: %ld", time_echo_isHigh);
+        ESP_LOGI(TAG_DIST, "Time echo is High: %ld", time_echo_isHigh);
         distance = ((speedOfSound * time_echo_isHigh) / 2); 
 
         if (validDistance)
         {
-            ESP_LOGI(TAG, "Distance: %0.04f cm", distance);
+            ESP_LOGI(TAG_DIST, "Distance: %0.04f cm", distance);
             process_data();
         }else{
-            ESP_LOGI(TAG, "Invalid Distance !! ");
+            ESP_LOGI(TAG_DIST, "Invalid Distance !! ");
             gpio_set_level(LED_GREEN, 1);
             gpio_set_level(LED_YELLOW, 1);
             gpio_set_level(LED_RED, 1);
@@ -321,14 +302,14 @@ void app_main()
     // Initialize I2C device
     esp_err_t ret_i2c = tc74_init(i2c_port, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     if (ret_i2c != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize I2C device: %d", ret_i2c);
+        ESP_LOGE(TAG_TEMP, "Failed to initialize I2C device: %d", ret_i2c);
         return;
     }
-    ESP_LOGI(TAG, "I2C device initialized successfully");
+    ESP_LOGI(TAG_TEMP, "I2C device initialized successfully");
     
     
     if (ret_i2c == ESP_OK) {
-        xTaskCreate(read_temperature_task, "Read Temp", 2048, NULL, 5, &xHandle);
+        xTaskCreate(&read_temperature_task, "Read Temp", 2048, NULL, 5, NULL);
     }
 
     xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 6, NULL);

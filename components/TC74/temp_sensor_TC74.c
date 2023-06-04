@@ -1,26 +1,17 @@
 #include "temp_sensor_TC74.h"
-#include "esp_log.h"
 
-#define TC74_READ_COMMAND           0x00            /* Command read for TC74*/ 
-#define TC74_CONFIG_REGISTER        0x01
-#define TC74_CONFIG_STANDBY         0x01
-#define TC74_CONFIG_WAKEUP          0x00
-#define I2C_MASTER_TX_BUF_DISABLE   0               /* I2C master doesn't need buffer */
-#define I2C_MASTER_RX_BUF_DISABLE   0               /* I2C master doesn't need buffer */
-
-static const char *TAG = "TC74";
 
 esp_err_t tc74_init(i2c_port_t i2cPort, int sdaPin, int sclPin, uint32_t clkSpeedHz)
 {
     int i2c_master_port = i2cPort;
-
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = sdaPin,
-        .scl_io_num = sclPin,
+        .sda_io_num = sdaPin,                   // select SDA GPIO specific to your project
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_io_num = sclPin,                   // select SCL GPIO specific to your project
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = clkSpeedHz,
+        .master.clk_speed = clkSpeedHz,         // select frequency specific to your project
+        .clk_flags = 0,                         // optional; you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here
     };
 
     i2c_param_config(i2c_master_port, &conf);

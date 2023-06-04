@@ -13,8 +13,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define WIFI_SSID      "Meo-Casa"
-#define WIFI_PASS      "234195488"
+#define WIFI_SSID      ""
+#define WIFI_PASS      ""
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
