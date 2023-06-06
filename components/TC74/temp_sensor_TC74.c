@@ -27,35 +27,43 @@ esp_err_t tc_74_free(i2c_port_t i2cPort)
 
 esp_err_t tc74_standby(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut)
 {
-    uint8_t data[2] = {TC74_CONFIG_REGISTER, TC74_CONFIG_STANDBY};
-    return i2c_master_write_to_device(i2cPort, sensAddr, data, 2, timeOut / portTICK_PERIOD_MS);
+    size_t write_size = 2;
+    uint8_t write_buffer[2] = {0X01, 0x01};    // CONFIG_register / standby value - SHDN bit enabled 
+
+    return i2c_master_write_to_device(i2cPort, sensAddr, write_buffer, write_size, timeOut);
 }
+
 
 esp_err_t tc74_wakeup(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut)
 {
-    uint8_t data[2] = {TC74_CONFIG_REGISTER, TC74_CONFIG_WAKEUP};
-    return i2c_master_write_to_device(i2cPort, sensAddr, data, 2, timeOut / portTICK_PERIOD_MS);
+    size_t write_size = 2;
+    uint8_t write_buffer[2] = {0X01, 0x00};    // CONFIG_register / wakeup value 
+
+    return i2c_master_write_to_device(i2cPort, sensAddr, write_buffer, write_size, timeOut);
 }
 
 bool tc74_is_temperature_ready(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut)
 {
-    uint8_t config_reg = 0;
-    uint8_t config_register = TC74_CONFIG_REGISTER;
-    esp_err_t err = i2c_master_write_read_device(i2cPort, sensAddr, &config_register, 1, &config_reg, 1, timeOut / portTICK_PERIOD_MS);
-    if (err == ESP_OK && (config_reg & 0x40) != 0) {
-        return true;
+    uint8_t config_register = 0x01;     //  Bytes to send on the bus
+    uint8_t temperature;                //  Buffer to store the bytes received on the bus
+    bool tempReady = false;
+
+    i2c_master_write_read_device(i2cPort, sensAddr, &config_register, 1, &temperature, 1, timeOut);
+
+    if ((temperature & 0x40) != 0) {  // ready = 1 / not ready = 0
+        tempReady = true;
     }
 
-    return false;
+    return tempReady;
 }
 
 esp_err_t tc74_wakeup_and_read_temp(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut, uint8_t* pData)
 {
-    esp_err_t err = tc74_wakeup(i2cPort, sensAddr, timeOut);
-    if (err != ESP_OK) return err;
+    tc74_wakeup(i2cPort, sensAddr, timeOut);
 
-    while (!tc74_is_temperature_ready(i2cPort, sensAddr, timeOut)) {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+    while (!tc74_is_temperature_ready(i2cPort, sensAddr, timeOut)) 
+    {
+        vTaskDelay(10 / portTICK_PERIOD_MS);    // wait for temperature value
     }
 
     return tc74_read_temp_after_cfg(i2cPort, sensAddr, timeOut, pData);
@@ -63,11 +71,12 @@ esp_err_t tc74_wakeup_and_read_temp(i2c_port_t i2cPort, uint8_t sensAddr, TickTy
 
 esp_err_t tc74_read_temp_after_cfg(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut, uint8_t* pData)
 {
-    uint8_t read_command = TC74_READ_COMMAND;
-    return i2c_master_write_read_device(i2cPort, sensAddr, &read_command, 1, pData, 1, timeOut / portTICK_PERIOD_MS);
+    uint8_t read_command = 0x00;
+   
+    return i2c_master_write_read_device(i2cPort, sensAddr, &read_command, 1, pData, 1, timeOut);
 }
 
 esp_err_t tc74_read_temp_after_temp(i2c_port_t i2cPort, uint8_t sensAddr, TickType_t timeOut, uint8_t* pData)
 {
-    return i2c_master_read_from_device(i2cPort, sensAddr, pData, 1, timeOut / portTICK_PERIOD_MS);
+    return i2c_master_read_from_device(i2cPort, sensAddr, pData, 1, timeOut);
 }

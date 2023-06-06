@@ -13,9 +13,6 @@
 #include "../components/TC74/temp_sensor_TC74.h"
 
 
-// #include "driver/i2c.h"
-#include "esp_system.h"
-
 #define LED_GREEN  17
 #define LED_YELLOW 27
 #define LED_RED 26
@@ -25,66 +22,86 @@
 #define TRIGGER_PIN OUT_GPIO    // envia o sinal de 10 us para o trigger 
 #define ECHO_PIN IN_GPIO        // recebe a resposta de tempo do echo 
 
-#define I2C_MASTER_SCL_IO   12
-#define I2C_MASTER_SDA_IO   13
-#define I2C_MASTER_FREQ_HZ  50000
-#define TC74_SENSOR_ADDR    0x4D
-#define CLK_SPEED_HZ        1000000
-
 #define TRIGGER_LOW_DELAY 2     // 2us
 #define TRIGGER_HIGH_DELAY 10   // 10us
 
+#define I2C_MASTER_SCL_IO   12
+#define I2C_MASTER_SDA_IO   13
+#define I2C_MASTER_FREQ_HZ  50000
+#define TC74_SENSOR_ADDR    0x4D    // default value -  1001 101b
+
 #define MAX_DIST 450 // cm
+
+#define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
+
+int8_t temperature_readings;
 
 bool validDistance = true;
 float distance = 0;
-float speedOfSound = 0;
-//float temperature = 20;
-float timeout = 0;
+float mean_distances = 0;
 
+bool sendDataToDash = false;
 
 static const char *TAG_DIST =  "MEASURE_DIST";
 
 static const char *TAG_HTTP = "HTTP_CLIENT";
-char POST_api_key[] = "JKG5ZK4N29JTE8VR";
 
 static const char *TAG_TEMP = "TEMP_VALUE";
-static i2c_port_t i2c_port = I2C_NUM_0;
 
-int8_t temperature_readings;
+char writeAPIKey[] = "JKG5ZK4N29JTE8VR";
+char deleteAPIKey[] = "CWA3NW2LPZJ8479U";
 
-#define timeout_expired(start, len) ((esp_timer_get_time() - (start)) >= (len))
+static i2c_port_t i2cPort = I2C_NUM_0;     /*!< I2C port 0 */
 
 
-static void configure_pins(void)
+/**
+ *  Configuring pins as input or output
+*/
+void configure_pins(void)
 {
-    // Initializing GPIO14 as input 
+    // Initializing GPIO14 as input - receive the echo 
     gpio_reset_pin(IN_GPIO);
     gpio_set_direction(ECHO_PIN, GPIO_MODE_INPUT); 
    
-    // Initializing GPIO25 and GPIO26 as output.
+    // Initializing GPIO25 as output - send trigger
     gpio_reset_pin(OUT_GPIO);
     gpio_set_direction(TRIGGER_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(TRIGGER_PIN, 0);
 
+    // Initializing GPIO17 as output - Led green 
     gpio_reset_pin(LED_GREEN);
     gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_GREEN, 0);
 
+    // Initializing GPIO27 as output - Led yellow
     gpio_reset_pin(LED_YELLOW);
     gpio_set_direction(LED_YELLOW, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_YELLOW, 0);
 
+    // Initializing GPIO26 as output - Led red
     gpio_reset_pin(LED_RED);
     gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
     gpio_set_level(LED_RED, 0);
 }
 
-// URL https://api.thingspeak.com/channels/<channel_id>/feeds.<format>
-static void clear_data_from_dashboard(void)
+
+/**
+ *  Clear a Channel Feed.
+ * 
+ *  HTTP Method : DELETE
+ *  URL : https://api.thingspeak.com/channels/<channel_id>/feeds.<format>
+ * 
+ *  URL Parameters :  
+ *                  <channel_id>  -  (Required) Channel ID for the channel of interest, specified as an integer.
+ *                  <format>      -  (Required) Format for the HTTP response, specified as json or xml.
+ * 
+ *  Body Parameters: (Required) Specify User API Key, which you can find in your profile. This key is different from the channel API keys
+ * 
+ *  Content-Type : application/x-www-form-urlencoded
+ *  
+*/
+void clear_data_from_dashboard(void)
 {
-    // int channel_id = 2136416
-    // char *format = "json";
     const char *url = "https://api.thingspeak.com/channels/2136416/feeds.json";
     esp_err_t err;
 
@@ -94,8 +111,7 @@ static void clear_data_from_dashboard(void)
 	};
 	esp_http_client_handle_t client = esp_http_client_init(&config);
     
-    //esp_http_client_set_url(client, " api_key=LMQTSIQASRSQ9JST");
-    esp_http_client_set_header(client, "api-key", "LMQTSIQASRSQ9JST");
+    esp_http_client_set_header(client, "api_key", deleteAPIKey);
     esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
 
     err = esp_http_client_perform(client);
@@ -112,9 +128,10 @@ static void clear_data_from_dashboard(void)
 }
 
 
-// https://api.thingspeak.com/update?api_key=JKG5ZK4N29JTE8VR&field1=0
-// POST FORMAT - https://api.thingspeak.com/update.<format>
-static void send_data_to_dashboard(void *pvParameters)
+/**
+ *  Write a Channel Feed.
+*/
+void send_data_to_dashboard(void *pvParameters)
 {
     const char *url = "https://api.thingspeak.com";
     char data [] = "&field1=%0.04f";
@@ -132,120 +149,144 @@ static void send_data_to_dashboard(void *pvParameters)
 
     while(1)
     {
-		strcpy(post_data, "");
-        snprintf(post_data, sizeof(post_data), data, distance);
-		ESP_LOGI(TAG_HTTP, "post = %s", post_data);
-		esp_http_client_set_post_field(client, post_data, strlen(post_data)); 
+        if (sendDataToDash)
+        {
+            sendDataToDash = false;
 
-		err = esp_http_client_perform(client);
+            strcpy(post_data, "");
+            snprintf(post_data, sizeof(post_data), data, mean_distances);
+            ESP_LOGI(TAG_HTTP, "post = %s", post_data);
+            esp_http_client_set_post_field(client, post_data, strlen(post_data)); 
 
-		if (err == ESP_OK)
-		{
-			int status_code = esp_http_client_get_status_code(client);
-			if (status_code == 200)
-			{
-				ESP_LOGI(TAG_HTTP, "Message sent Successfully");
-			}
-			else
-			{
-				ESP_LOGI(TAG_HTTP,"HTTP POST request failed: %s", esp_err_to_name(err));				
-                //goto exit;
-                break;
+            err = esp_http_client_perform(client);
+
+            if (err == ESP_OK)
+            {
+                int status_code = esp_http_client_get_status_code(client);
+                if (status_code == 200)
+                {
+                    ESP_LOGI(TAG_HTTP, "Message sent Successfully");
+                }
+                else
+                {
+                    ESP_LOGE(TAG_HTTP,"HTTP POST request failed: %s", esp_err_to_name(err));				
+                }
             }
-		}
-		else
-		{
-			ESP_LOGI(TAG_HTTP, "HTTP POST request failed: %s", esp_err_to_name(err));
-            //goto exit;
-            break;
-        }
+            else
+            {
+                ESP_LOGE(TAG_HTTP, "HTTP POST request failed: %s", esp_err_to_name(err));
+            }
 
-        // 500 /10
-        vTaskDelay(500 / portTICK_PERIOD_MS);  // vTasDelay(tick) 1tck = 10 ms -> 100tck = 500ms -> 0.5 s
+            // 500 /10
+            //vTaskDelay(500 / portTICK_PERIOD_MS);  // vTasDelay(tick) 1tck = 10 ms -> 100tck = 500ms -> 0.5 s
+        }
     }
-    
-    //exit:
+
     esp_http_client_cleanup(client);
     esp_http_client_close(client);
     vTaskDelete(NULL);
 }
 
-void process_data()
+/**
+ *  Detection of an object at short, medium and long range.
+*/
+void process_data(bool validDist)
 {
-    if (distance >= 20)
+    if (validDist)
     {
-        gpio_set_level(LED_GREEN, 1);
-        gpio_set_level(LED_YELLOW, 0);
-        gpio_set_level(LED_RED, 0);
+        ESP_LOGI(TAG_DIST, " Distance: %0.04f cm ", distance);
 
-    }else if (distance < 20 && distance > 10)
-    {
-        gpio_set_level(LED_GREEN, 0);
-        gpio_set_level(LED_YELLOW, 1);
-        gpio_set_level(LED_RED, 0);
+        if (distance >= 20)
+        {
+            gpio_set_level(LED_GREEN, 1);
+            gpio_set_level(LED_YELLOW, 0);
+            gpio_set_level(LED_RED, 0);
 
-    }else if (distance <= 10) 
-    {
+        }else if (distance < 20 && distance > 10)
+        {
+            gpio_set_level(LED_GREEN, 0);
+            gpio_set_level(LED_YELLOW, 1);
+            gpio_set_level(LED_RED, 0);
 
-        gpio_set_level(LED_GREEN, 0);
-        gpio_set_level(LED_YELLOW, 0);
-        gpio_set_level(LED_RED, 1);
-    }
+        }else if (distance <= 10) 
+        {
 
-}
-
-void read_temperature_task(void *param)
-{
-
-    while (1) {
-        previousWakeTime = xTaskGetTickCount();
-        int32_t temperature_sum = 0;
-        uint8_t temperature = 0;
-        int num_readings = 3;
-
-        // Wake up and do the first read
-        esp_err_t err = tc74_wakeup_and_read_temp(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100), &temperature);
-        if (err == ESP_OK) {
-            temperature_sum += (int8_t)temperature;
-            // ESP_LOGI(TAG_TEMP, "0 Temperature: %d°C", (int8_t)temperature);
-        } else {
-            ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
-        }
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
-
-        // Read the temperature 2 more times
-        for (int i = 0; i < 2; i++) {
-            temperature = 0;
-            err = tc74_read_temp_after_temp(i2c_port, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100), &temperature);
-
-            if (err == ESP_OK) {
-                temperature_sum += (int8_t)temperature;
-                // ESP_LOGI(TAG_TEMP, "%d Temperature: %d°C", i+1, (int8_t)temperature);
-            } else {
-                ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
-            }
-
-            vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 100 ms between readings
+            gpio_set_level(LED_GREEN, 0);
+            gpio_set_level(LED_YELLOW, 0);
+            gpio_set_level(LED_RED, 1);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+    }else{
+            ESP_LOGE(TAG_DIST, " Invalid Distance. ");
+
+            gpio_set_level(LED_GREEN, 1);
+            gpio_set_level(LED_YELLOW, 1);
+            gpio_set_level(LED_RED, 1);
     }
 }
 
 /**
+ *  Temperature measurement every 0.1 s
+*/
+void temperature_measure(void *pvParameters)
+{
+    uint8_t temperature = 0;
+
+    // First reading
+    esp_err_t err = tc74_wakeup_and_read_temp(i2cPort, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100)/ portTICK_PERIOD_MS, &temperature);
+
+    if (err == ESP_OK) {
+        temperature_readings = (int8_t)temperature;
+        ESP_LOGI(TAG_TEMP, "Temperature: %d°C", (int8_t)temperature);
+    } else {
+        ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100)); // Delay 100 ms = 0.1s between readings
+
+    while (true) 
+    {
+        // Continuing to read the values
+        err = tc74_read_temp_after_temp(i2cPort, TC74_SENSOR_ADDR, pdMS_TO_TICKS(100)/portTICK_PERIOD_MS, &temperature);
+
+        if (err == ESP_OK) {
+            temperature_readings = (int8_t)temperature;
+            //ESP_LOGI(TAG_TEMP, "Temperature: %d°C", (int8_t)temperature);
+        } else {
+            ESP_LOGE(TAG_TEMP, "Failed to read temperature: %d", err);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100)); // Delay 100 ms = 0.1s between readings
+    }
+
+    tc_74_free(i2cPort);
+    vTaskDelete(NULL);
+}
+
+
+/**
  *  Distance measurement every 0.5 s
 */
-static void ultrasonic_measure(void *pvParameters)
+void ultrasonic_measure(void *pvParameters)
 {
-    int8_t temperature = temperature_readings;
-    speedOfSound = (((331.5 + (0.6 * temperature)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
-    ESP_LOGI(TAG_DIST, "Speed of Sound: %f", speedOfSound);
-    timeout = (MAX_DIST*2 / speedOfSound) + 1;
-    ESP_LOGI(TAG_DIST, "Timeout: %f", timeout);
+    float timeout = 0;
+    float speedOfSound = 0;
+
+    float sumDistances = 0;
+    float nMeasures = 0;
+
+    vTaskDelay(pdMS_TO_TICKS(100)); // Delay 100 ms = 0.1s between readings
 
     while(true)
     {
         validDistance = true;
+
+        ESP_LOGI(TAG_DIST, "temperature: %dºC", temperature_readings);
+        speedOfSound = (((331.5 + (0.6 * temperature_readings)) * 100) / 1000000); // m/s = m/s * 100 (cm/s) = cm/s / 1 000 000 (cm/us)
+        // ESP_LOGI(TAG_DIST, "Speed of Sound: %f", speedOfSound);
+        timeout = (MAX_DIST*2 / speedOfSound) + 1;
+        // ESP_LOGI(TAG_DIST, "Timeout: %f", timeout);
+
 
         // Clears the trigger Pin
         gpio_set_level(TRIGGER_PIN, 0); 
@@ -275,18 +316,25 @@ static void ultrasonic_measure(void *pvParameters)
         uint32_t time_echo_isHigh;
         time_echo_isHigh = time - echo_start;   // us (microsec)
 
-        ESP_LOGI(TAG_DIST, "Time echo is High: %ld", time_echo_isHigh);
+        //ESP_LOGI(TAG_DIST, "Time echo is High: %ld", time_echo_isHigh);
         distance = ((speedOfSound * time_echo_isHigh) / 2); 
 
-        if (validDistance)
+        process_data(validDistance);
+
+        sumDistances += distance;   // guardar 10 medicoes 
+        nMeasures++;
+
+        //ESP_LOGI(TAG_DIST, "nMeasures: %f", nMeasures);
+        //ESP_LOGI(TAG_DIST, "sumDistances: %f", sumDistances);
+        if (nMeasures == 5)
         {
-            ESP_LOGI(TAG_DIST, "Distance: %0.04f cm", distance);
-            process_data();
-        }else{
-            ESP_LOGI(TAG_DIST, "Invalid Distance !! ");
-            gpio_set_level(LED_GREEN, 1);
-            gpio_set_level(LED_YELLOW, 1);
-            gpio_set_level(LED_RED, 1);
+            mean_distances = sumDistances / 5;  // determinar a media das 5 medicos em 2.5 s
+            sendDataToDash = true;
+            //ESP_LOGI(TAG_DIST, "mean_distances: %0.04f cm", mean_distances);
+            sumDistances = 0;
+            nMeasures = 0;
+
+            ESP_LOGI(TAG_DIST, "sumDistances: %f", sumDistances);
         }
 
         vTaskDelay(pdMS_TO_TICKS(500)); // 0,5 s
@@ -295,32 +343,32 @@ static void ultrasonic_measure(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-void app_main()
+
+void app_main(void)
 {
     configure_pins();
 
     // Initialize I2C device
-    esp_err_t ret_i2c = tc74_init(i2c_port, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
-    if (ret_i2c != ESP_OK) {
-        ESP_LOGE(TAG_TEMP, "Failed to initialize I2C device: %d", ret_i2c);
+    esp_err_t err = tc74_init(i2cPort, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG_TEMP, "Failed to initialize I2C device: %d", err);
         return;
     }
     ESP_LOGI(TAG_TEMP, "I2C device initialized successfully");
     
     
-    if (ret_i2c == ESP_OK) {
-        xTaskCreate(&read_temperature_task, "Read Temp", 2048, NULL, 5, NULL);
+    if (err == ESP_OK) 
+    {
+        xTaskCreate(&temperature_measure, "temperature_measure", 2048, NULL, 6, NULL);  // temperature  - every 0.1 s
+        xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 6, NULL);    // distances - every 0.5 s
     }
 
-    xTaskCreate(&ultrasonic_measure, "ultrasonic_measure", 2048, NULL, 6, NULL);
+    init_NVS();
+    wifi_init_sta();
 
-    // init_NVS();
-    // wifi_init_sta();
-
-    // if (wifi_connect_status)
-    // {
-    //     //clear_data_from_dashboard();
-    //     xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
-    // }
-
+    if (wifi_connect_status)
+    {
+        //clear_data_from_dashboard();
+        xTaskCreate(&send_data_to_dashboard, "send_data_to_dashboard", 8192, NULL, 6, NULL); 
+    }
 }

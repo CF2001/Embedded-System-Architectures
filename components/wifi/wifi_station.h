@@ -13,8 +13,8 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#define WIFI_SSID      ""
-#define WIFI_PASS      ""
+#define WIFI_SSID      "Redmi Note 11 Pro+ 5G"
+#define WIFI_PASS      "eduroamdemo"
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -39,17 +39,8 @@ extern int wifi_connect_status;
 */
 void init_NVS(void);
 
-/**
- *  @param
- *  @param 
- *  @param
- *  @param
-*/
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
-/**
- * 
-*/
 void wifi_init_sta(void);
 
 #endif
