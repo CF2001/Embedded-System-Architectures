@@ -259,7 +259,7 @@ void temperature_measure(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(100)); // Delay 100 ms = 0.1s between readings
     }
 
-    tc_74_free(i2cPort);
+    tc74_free(i2cPort);
     vTaskDelete(NULL);
 }
 
