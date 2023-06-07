@@ -4,7 +4,8 @@
 
  #### /esp32/main
      
-     Código fonte que recebe os dados dos sensor HC-SR04P, deteta o objeto e determina a distância a que o objeto se encontra.
+     Código fonte para receber os dados dos sensor HC-SR04P.
+     Contém o código para detetar o objeto e determinar a distância a que o objeto se encontra.
      Contém o código para enviar os dados para o dashboard remoto, através de HTTP.
 
  #### /esp32/components/TC74
