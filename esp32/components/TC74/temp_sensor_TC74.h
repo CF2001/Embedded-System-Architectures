@@ -28,7 +28,7 @@ esp_err_t tc74_init(i2c_port_t i2cPort, int sdaPin, int sclPin, uint32_t clkSpee
  *      @return ESP_OK Success
  *              ESP_ERR_INVALID_ARG Parameter error
 */
-esp_err_t tc_74_free(i2c_port_t i2cPort);
+esp_err_t tc74_free(i2c_port_t i2cPort);
 
 
 /**

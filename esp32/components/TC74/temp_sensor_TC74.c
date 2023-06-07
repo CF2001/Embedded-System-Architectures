@@ -19,7 +19,7 @@ esp_err_t tc74_init(i2c_port_t i2cPort, int sdaPin, int sclPin, uint32_t clkSpee
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
-esp_err_t tc_74_free(i2c_port_t i2cPort)
+esp_err_t tc74_free(i2c_port_t i2cPort)
 {
     i2c_driver_delete(i2cPort);
     return ESP_OK;
