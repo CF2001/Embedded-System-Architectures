@@ -15,5 +15,9 @@
  #### /esp32/components/wifi
 
      Código para realizar a conectividade de rede wifi.
+
+Project developed with [Carlos Costa](https://github.com/carlosrjpcosta).
+
+#### Grade: 15,0/20
      
      
